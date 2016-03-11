@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width">
+  <title>JS Bin</title>
+  
+  <link href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css" rel="stylesheet" type="text/css" />
+</head>
+<body>
+  <canvas id="canvas" width="600" height="400"></canvas>
+  <br>
+  <button type="button" id="add-rect" class="btn btn-primary btn-sm">Rect</button>
+  <button type="button" id="redo" disabled="disabled" class="btn btn-primary btn-sm">Redo</button>
+  <button type="button" id="undo" disabled="disabled" class="btn btn-primary btn-sm">Undo</button>
+  <button type="button" id="clearcanvas" class="btn btn-danger btn-sm" disabled>Clear</button>
+  <input type="color" id="color" value="#ff0000">
+  <input type="range" id="opacity" min="0" max="1" step="0.01" value="1" style="display: inline-block; width: 100px;">
+  
+  <pre id="output" style="margin-top: 10px"></pre>
+  <pre id="output-canvas" style="margin-top: 10px"></pre>
+  
+	<script src="https://code.jquery.com/jquery.min.js"></script>
+	<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js"></script>
+  <script src="https://code.jquery.com/jquery-1.11.3.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/1.5.0/fabric.min.js"></script>
+  
+  <script type="text/javascript">
+  var canvas = {
+	  historyIndex: false,
+	  undoIndex: false,
+	  redoIndex: false,
+	  fabric: new fabric.Canvas('canvas'),
+	  render: function(){
+	    this.fabric.renderAll();
+	    fabricHistory.add();
+	  },
+	  json: function(){
+	    return this.fabric.toJSON(['width', 'height']);
+	  }
+	};
+	
+	var fabricHistory = {
+	  data: [],
+	  add: function(){
+	    canvas.historyIndex = this.data.length;
+	    canvas.undoIndex = this.data.length - 1 !== -1 ? canvas.historyIndex -1 : false;
+	    canvas.redoIndex = canvas.historyIndex + 1 >= this.data.length ? false : canvas.historyIndex + 1;
+	    this.data.push({
+	      content: canvas.json()
+	    });
+	    
+	    this.setButtons();
+	    this.print();
+	  },
+	  print: function(){
+	    $('#output').html(JSON.stringify(this.data, null, 2));
+	    $('#output-canvas').html(JSON.stringify(canvas, null, 2));
+	  },
+	  setButtons: function(){
+	    // setup undo button
+	    if (canvas.undoIndex !== false) {
+	      $('#undo').removeAttr('disabled');
+	    } else {
+	      $('#undo').attr('disabled', '');
+	    }
+	    
+	    // setup redo index
+	    if (canvas.redoIndex !== false) {
+	      $('#redo').removeAttr('disabled');
+	    } else {
+	      $('#redo').attr('disabled', '');
+	    }
+	    
+	    if (this.data.length > 1) {
+	      $('#clearcanvas').removeAttr('disabled');
+	    } else {
+	      $('#clearcanvas').attr('disabled', '');
+	    }
+	  },
+	  undo: function(){
+	    if (canvas.undoIndex !== false) {
+	      canvas.fabric.loadFromJSON(this.data[canvas.undoIndex].content, canvas.fabric.renderAll.bind(canvas.fabric));
+	      
+	      canvas.historyIndex = canvas.historyIndex - 1;
+	      if (canvas.historyIndex - 1 !== -1) {
+	        canvas.undoIndex = canvas.historyIndex - 1;
+	      } else {
+	        canvas.undoIndex = false;
+	      }
+	      
+	      canvas.redoIndex = canvas.historyIndex + 1;
+	    }
+	    
+	    this.setButtons();
+	    this.print();
+	  },
+	  redo: function(){
+	    if (canvas.redoIndex !== false) {
+	      console.log(canvas.redoIndex);
+	      canvas.fabric.loadFromJSON(this.data[canvas.redoIndex].content, canvas.fabric.renderAll.bind(canvas.fabric));
+	      
+	      canvas.historyIndex = canvas.historyIndex + 1;
+	      if (canvas.historyIndex + 1 >= this.data.length) {
+	        canvas.redoIndex = false;
+	      } else {
+	        canvas.redoIndex = canvas.historyIndex + 1;
+	      }
+	      
+	      canvas.undoIndex = canvas.historyIndex - 1;
+	    }
+	    
+	    this.setButtons();
+	    this.print();
+	  },
+	  reset: function(){
+	    this.data = [];
+	  }
+	};
+	
+	canvas.fabric.setBackgroundColor('#eee');
+	canvas.render();
+	
+	
+	$('#add-rect').click(function(){
+	  var rect = new fabric.Rect({
+	    width: 100,
+	    height: 100,
+	    fill: 'red',
+	    left: 0,
+	    top: canvas.fabric.height - 100
+	  });
+	  
+	  canvas.fabric.add(rect);
+	  canvas.fabric.setActiveObject(rect);
+	  canvas.render();
+	});
+	
+	canvas.fabric.on('object:modified', function(t) {
+	  fabricHistory.add();
+	});
+	canvas.fabric.on('object:removed', function(t) {
+	  fabricHistory.add();
+	});
+	
+	$(document).on('keyup', function(e){
+	  var code = e.keyCode || e.which;
+	
+	  if (code == 46) {
+	    if (canvas.fabric.getActiveObject()) {
+	      canvas.fabric.remove(canvas.fabric.getActiveObject()).renderAll();
+	    }
+	
+	    if (canvas.fabric.getActiveGroup()) {
+	      canvas.fabric.getActiveGroup().forEachObject(function(o) {
+	        canvas.fabric.remove(o);
+	      });
+	      canvas.fabric.discardActiveGroup().renderAll();
+	    }
+	  }
+	});
+	
+	$('#redo').click(function(){
+	  fabricHistory.redo();
+	});
+	$('#undo').click(function(){
+	  fabricHistory.undo();
+	});
+	
+	$('#clearcanvas').click(function(){
+	  fabricHistory.reset();
+	  canvas.fabric.clear();
+	  canvas.render();
+	  
+	  fabricHistory.setButtons();
+	  fabricHistory.print();
+	});
+	
+	$('#opacity').change(function(){
+	  var obj = canvas.fabric.getActiveObject();
+	  
+	  if (obj) {
+	    obj.setOpacity($(this).val());
+	    canvas.fabric.renderAll();
+	  }
+	});
+	$('#color').change(function(){
+	  var obj = canvas.fabric.getActiveObject();
+	  
+	  if (obj) {
+	    obj.setFill($(this).val());
+	    canvas.fabric.renderAll();
+	  }
+	});
+  </script>
+</body>
+</html>
